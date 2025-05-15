@@ -19,7 +19,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from app.views import (
     ProfileViewSet,
-    DoctorProfileViewSet,
+    DoctorProfileView,
     DoctorAvailabilityViewSet,
     AppointmentViewSet,
     PrescriptionViewSet,
@@ -32,7 +32,6 @@ from app.views import (
 
 router = DefaultRouter()
 router.register(r'profiles', ProfileViewSet)
-router.register(r'doctors', DoctorProfileViewSet)
 router.register(r'availability', DoctorAvailabilityViewSet)
 router.register(r'appointments', AppointmentViewSet)
 router.register(r'prescriptions', PrescriptionViewSet)
@@ -47,6 +46,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api/profile/', ProfileUpdateView.as_view(), name='my-profile-update'),
+    path('api/doctors/', DoctorProfileView.as_view(), name='doctor-profiles'),
     path('api/login/', LoginView.as_view(), name='login'),
     path('api/signup/', SignUpView.as_view(), name='signup'),
 

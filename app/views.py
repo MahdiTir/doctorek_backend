@@ -149,11 +149,91 @@ class ProfileUpdateView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class DoctorProfileViewSet(viewsets.ModelViewSet):
+class DoctorProfileView(APIView):
     queryset = DoctorProfiles.objects.all()
     serializer_class = DoctorProfileSerializer
-    #permission_classes = [IsAuthenticated]
 
+    def get(self, request):
+        """
+        Get doctor profiles ordered by average rating with related profile information
+        """
+        user_id = get_user_id_from_token(request)
+        if not user_id or user_id is None:
+            return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+        print("Debug - Inside get_top_doctors method")
+        # Get doctor profiles with related profile data
+        doctor_profiles = DoctorProfiles.objects.select_related('user').all()
+        
+        # Order by average rating in descending order
+        doctor_profiles = doctor_profiles.order_by('-average_rating')
+        
+        # Create custom response data with the requested fields
+        result = []
+        for doctor in doctor_profiles:
+            doctor_data = {
+                'id': doctor.id,
+                'specialty': doctor.specialty,
+                'hospital_name': doctor.hospital_name,
+                'average_rating': doctor.average_rating,
+                'profiles': {
+                    'full_name': doctor.user.full_name if doctor.user else None,
+                    'avatar_url': doctor.user.avatar_url if doctor.user else None
+                }
+            }
+            result.append(doctor_data)
+        
+        return Response(result)
+    
+    def get_doctor_detail(self, request):
+        """
+        Get detailed information for a specific doctor including availability and profile information
+        """
+        doctor_id = request.query_params.get('id')
+        if not doctor_id:
+            return Response({"detail": "Doctor ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get authenticated user (optional, can be removed if no auth needed for this endpoint)
+        user_id = get_user_id_from_token(request)
+        if not user_id:
+            return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # Try to fetch the doctor with the given ID
+        try:
+            doctor = DoctorProfiles.objects.select_related('user').get(id=doctor_id)
+        except DoctorProfiles.DoesNotExist:
+            return Response({"detail": "Doctor not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get available days for this doctor
+        available_days = DoctorAvailability.objects.filter(
+            doctor_id=doctor_id,
+            is_available=True
+        ).values('day_of_week', 'is_available')
+        
+        # Build the response with the same structure as the Supabase query
+        result = {
+            'id': doctor.id,
+            'user_id': doctor.user_id,
+            'specialty': doctor.specialty,
+            'hospital_name': doctor.hospital_name,
+            'hospital_address': doctor.hospital_address,
+            'location_lat': doctor.location_lat,
+            'location_lng': doctor.location_lng,
+            'bio': doctor.bio,
+            'years_of_experience': doctor.years_of_experience,
+            'contact_information': doctor.contact_information,
+            'average_rating': doctor.average_rating,
+            'created_at': doctor.created_at,
+            'updated_at': doctor.updated_at,
+            'doctor_availability': list(available_days),
+            'profiles': {
+                'full_name': doctor.user.full_name if doctor.user else None,
+                'avatar_url': doctor.user.avatar_url if doctor.user else None
+            }
+        }
+        
+        return Response(result)
+
+    
     
     def create(self, request):
         

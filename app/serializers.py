@@ -22,7 +22,7 @@ class DoctorAvailabilitySerializer(serializers.ModelSerializer):
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
     availability = DoctorAvailabilitySerializer(many=True, read_only=True)
-    user = ProfileSerializer(read_only=True)
+    user_id = ProfileSerializer(read_only=True)
 
     class Meta:
         model = DoctorProfiles
