@@ -24,7 +24,10 @@ from app.views import (
     AppointmentViewSet,
     PrescriptionViewSet,
     FavoriteDoctorViewSet,
-    NotificationViewSet
+    NotificationViewSet,
+    ProfileUpdateView,
+    LoginView,
+    SignUpView,
 )
 
 router = DefaultRouter()
@@ -36,7 +39,16 @@ router.register(r'prescriptions', PrescriptionViewSet)
 router.register(r'favorites', FavoriteDoctorViewSet)
 router.register(r'notifications', NotificationViewSet)
 
+
+
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
+    path('api/profile/', ProfileUpdateView.as_view(), name='my-profile-update'),
+    path('api/login/', LoginView.as_view(), name='login'),
+    path('api/signup/', SignUpView.as_view(), name='signup'),
+
 ]
+

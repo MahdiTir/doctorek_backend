@@ -13,6 +13,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profiles
         fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
     class Meta:
@@ -26,6 +27,9 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = DoctorProfiles
         fields = '__all__'
+    
+    def create(self, validated_data):
+        return DoctorProfiles.objects.create(**validated_data)
 
 class AppointmentSerializer(serializers.ModelSerializer):
     patient = ProfileSerializer(read_only=True)
@@ -58,3 +62,4 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notifications
         fields = '__all__'
+
