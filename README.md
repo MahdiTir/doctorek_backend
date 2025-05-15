@@ -24,3 +24,9 @@ solution :
 2-  # Install Django and Django REST framework and other essential packages
 
 `pip install -r requirements.txt`
+
+3- create .env file in the root directory 
+
+`SUPABASE_URL=https://epcuwqfdzmb..`
+
+`SUPABASE_KEY=ey..`
