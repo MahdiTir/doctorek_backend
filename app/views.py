@@ -253,7 +253,7 @@ class DoctorProfileView(APIView):
         data = {
             #**request.data,
             'id': doctor_id,
-            'user_id': user_id,
+            'user': user_id,
             'created_at': datetime.now(),
             'updated_at': datetime.now()
         }

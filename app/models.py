@@ -136,8 +136,6 @@ class DoctorProfiles(models.Model):
 
 
 
-
-
 class FavoriteDoctors(models.Model):
     id = models.UUIDField(primary_key=True)
     patient = models.ForeignKey(Profiles, models.CASCADE, related_name='favorite_doctors')
