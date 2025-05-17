@@ -49,6 +49,5 @@ urlpatterns = [
     path('api/doctors/', DoctorProfileView.as_view(), name='doctor-profiles'),
     path('api/login/', LoginView.as_view(), name='login'),
     path('api/signup/', SignUpView.as_view(), name='signup'),
-
 ]
 

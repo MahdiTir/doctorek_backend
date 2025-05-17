@@ -157,6 +157,13 @@ class DoctorProfileView(APIView):
         """
         Get doctor profiles ordered by average rating with related profile information
         """
+
+        doctor_id = request.query_params.get('id')
+        
+        # If doctor_id is provided, return detailed view
+        if doctor_id:
+            return self.get_doctor_detail(request)
+            
         user_id = get_user_id_from_token(request)
         if not user_id or user_id is None:
             return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -170,15 +177,30 @@ class DoctorProfileView(APIView):
         # Create custom response data with the requested fields
         result = []
         for doctor in doctor_profiles:
+
+            available_days = DoctorAvailability.objects.filter(
+                doctor_id=doctor.id,
+                is_available=True
+            ).values('day_of_week', 'start_time', 'end_time', 'slot_duration')
+            
             doctor_data = {
                 'id': doctor.id,
                 'specialty': doctor.specialty,
                 'hospital_name': doctor.hospital_name,
+                'hospital_address': doctor.hospital_address,
+                'location': {
+                    'lat': doctor.location_lat,
+                    'lng': doctor.location_lng
+                },
                 'average_rating': doctor.average_rating,
                 'profiles': {
                     'full_name': doctor.user.full_name if doctor.user else None,
+                    'email': doctor.user.email if doctor.user else None,
+                    'phone_number': doctor.user.phone_number if doctor.user else None,
                     'avatar_url': doctor.user.avatar_url if doctor.user else None
-                }
+                },
+                'availability': list(available_days)  
+        
             }
             result.append(doctor_data)
         
@@ -216,8 +238,10 @@ class DoctorProfileView(APIView):
             'specialty': doctor.specialty,
             'hospital_name': doctor.hospital_name,
             'hospital_address': doctor.hospital_address,
-            'location_lat': doctor.location_lat,
-            'location_lng': doctor.location_lng,
+            'location':{
+                'lat': doctor.location_lat,
+                'lng': doctor.location_lng
+            },
             'bio': doctor.bio,
             'years_of_experience': doctor.years_of_experience,
             'contact_information': doctor.contact_information,
@@ -227,11 +251,15 @@ class DoctorProfileView(APIView):
             'doctor_availability': list(available_days),
             'profiles': {
                 'full_name': doctor.user.full_name if doctor.user else None,
+                'email': doctor.user.email if doctor.user else None,
+                'phone_number': doctor.user.phone_number if doctor.user else None,
+                'address': doctor.user.address if doctor.user else None,
                 'avatar_url': doctor.user.avatar_url if doctor.user else None
             }
         }
         
         return Response(result)
+    
 
     
     
