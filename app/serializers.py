@@ -32,8 +32,8 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         return DoctorProfiles.objects.create(**validated_data)
 
 class AppointmentSerializer(serializers.ModelSerializer):
-    patient = ProfileSerializer(read_only=True)
-    doctor = DoctorProfileSerializer(read_only=True)
+    patient_id = ProfileSerializer(read_only=True)
+    doctor_id = DoctorProfileSerializer(read_only=True)
 
     class Meta:
         model = Appointments
