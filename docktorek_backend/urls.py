@@ -15,7 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
-from app.views import LoginView, SignUpView, ProfileViewSet , ProfileUpdateView, DoctorProfileView, DoctorAvailabilityViewSet, AppointmentViewSet, PrescriptionViewSet, FavoriteDoctorViewSet, NotificationViewSet 
+from app.views import LoginView, SignUpView, ProfileViewSet , ProfileUpdateView, DoctorProfileView, DoctorAvailabilityViewSet, AppointmentViewSet, FavoriteDoctorViewSet, NotificationViewSet 
 
 from django.contrib import admin
 from django.urls import path, include
@@ -25,20 +25,19 @@ from app.views import (
     DoctorProfileView,
     DoctorAvailabilityViewSet,
     AppointmentViewSet,
-    PrescriptionViewSet,
     FavoriteDoctorViewSet,
     NotificationViewSet,
     ProfileUpdateView,
     LoginView,
     SignUpView,
-    DoctorDetailView
+
 )
 
 router = DefaultRouter()
 router.register(r'profiles', ProfileViewSet)
 router.register(r'availability', DoctorAvailabilityViewSet)
 router.register(r'appointments', AppointmentViewSet)
-router.register(r'prescriptions', PrescriptionViewSet)
+#router.register(r'prescriptions', PrescriptionViewSet)
 router.register(r'favorites', FavoriteDoctorViewSet)
 router.register(r'notifications', NotificationViewSet)
 
@@ -51,8 +50,7 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/profile/', ProfileUpdateView.as_view(), name='my-profile-update'),
     path('api/doctors/', DoctorProfileView.as_view(), name='doctor-profiles'),
-    path('api/doctors/<uuid:doctor_id>/', DoctorDetailView.as_view(), name='doctor-detail'),
-    path('api/doctor-detail/', DoctorDetailView.as_view(), name='doctor-detail-query'),  
+    path('api/doctors/<uuid:doctor_id>/', DoctorProfileView.as_view(), name='doctor-detail'),
     path('api/login/', LoginView.as_view(), name='login'),
     path('api/signup/', SignUpView.as_view(), name='signup'),
 ]

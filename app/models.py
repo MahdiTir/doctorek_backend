@@ -170,7 +170,6 @@ class Appointments(models.Model):
     qr_code = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)  
     updated_at = models.DateTimeField(auto_now=True)     
-    last_sync = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         db_table = 'appointments'

@@ -22,7 +22,7 @@ class DoctorAvailabilitySerializer(serializers.ModelSerializer):
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
     availability = DoctorAvailabilitySerializer(many=True, read_only=True)
-    user_id = ProfileSerializer(read_only=True)
+    user = ProfileSerializer(read_only=True)
 
     class Meta:
         model = DoctorProfiles
@@ -32,12 +32,18 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         return DoctorProfiles.objects.create(**validated_data)
 
 class AppointmentSerializer(serializers.ModelSerializer):
-    patient_id = ProfileSerializer(read_only=True)
-    doctor_id = DoctorProfileSerializer(read_only=True)
+    patient_id = serializers.UUIDField(source='patient.id',read_only=True)
+    doctor_id = serializers.UUIDField(source='doctor.id',read_only=True)
 
     class Meta:
         model = Appointments
-        fields = '__all__'
+        #fields = '__all__'
+        fields = [
+                 'id',
+                 'patient', 'doctor', 'patient_id', 'doctor_id', 
+                 'appointment_date', 'start_time', 'end_time', 'status', 
+                 'reason', 'notes', 'qr_code', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
 
 class PrescriptionSerializer(serializers.ModelSerializer):
     patient = ProfileSerializer(read_only=True)
