@@ -115,7 +115,36 @@ class DoctorProfileView(APIView):
         
         return Response(result)
     
-    def get_doctor_detail(self, request):
+
+    def get_doctor_detail(self, request, doctor_id = None):
+        """
+        Get detailed information for a specific doctor including availability and profile information
+        """
+        # Get doctor ID either from URL path or query parameters
+        if not doctor_id:
+            doctor_id = request.query_params.get('id')
+            
+        if not doctor_id:
+            return Response({"detail": "Doctor ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get authenticated user (optional, can be removed if no auth needed for this endpoint)
+        user_id = get_user_id_from_token(request)
+        if not user_id:
+            return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # Try to fetch the doctor with the given ID
+        try:
+            doctor = DoctorProfiles.objects.select_related('user').get(user_id=doctor_id)
+        except DoctorProfiles.DoesNotExist:
+            return Response({"detail": "Doctor not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Serialize the doctor data with our detailed serializer
+        serializer = DoctorDetailSerializer(doctor)
+        return Response(serializer.data)
+    
+
+class DoctorDetailView(APIView):
+    def get(self, request, doctor_id=None):
         """
         Get detailed information for a specific doctor including availability and profile information
         """

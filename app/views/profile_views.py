@@ -33,3 +33,28 @@ class ProfileUpdateView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def get(self, request):
+        user_id = get_user_id_from_token(request)
+        if not user_id:
+            return Response({
+                'success': False,
+                'message': 'Invalid Token.',
+                'data': None
+            }, status=401)
+        try:
+            profile = Profiles.objects.get(id=user_id)
+        except Profiles.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Profile not found.',
+                'data': None
+            }, status=404)
+        
+        serialized = ProfileSerializer(profile)
+        return Response({
+                'success': True,
+                'message': 'Profile fetched successfully.',
+                'data': serialized.data
+            }, status=200)
+        

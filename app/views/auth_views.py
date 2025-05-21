@@ -44,7 +44,7 @@ class LoginView(APIView):
             return Response(formatted_response)
         else:
             error_data = response.json()
-            error_message = error_data.get('error_description', 'Login failed')
+            error_message = error_data.get('error_code', 'Login failed')
             
             return Response({
                 'success': False,
@@ -60,11 +60,7 @@ class SignUpView(APIView):
         user_type = request.data.get("user_type") 
 
         if not email or not password:
-            return Response({
-                'success': False,
-                'message': 'Email and password are required.',
-                'data': None
-            }, status=400)
+            return Response({"detail": "Email and password are required."}, status=400)
 
         payload = {
             "email": email,
@@ -85,48 +81,28 @@ class SignUpView(APIView):
 
         if response.status_code != 200:
             error_data = response.json()
-            error_message = error_data.get('error_description', 'Registration failed')
+            error_message = error_data.get('error_code', 'Signup failed')
+            
             return Response({
                 'success': False,
                 'message': error_message,
                 'data': None
             }, status=response.status_code)
-        
-        user = response.json().get("user")
-        if not user:
-            return Response({
-                'success': False,
-                'message': "User created but no user data returned.",
-                'data': None
-            }, status=500)
-
-        user_id = user["id"]
-
-        if user_type:
-            patch = requests.patch(
-                f"{settings.SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
-                headers={
-                    "apikey": settings.SUPABASE_KEY,
-                    "Authorization": f"Bearer {settings.SUPABASE_KEY}",
-                    "Content-Type": "application/json",
-                    "Prefer": "return=representation"
-                },
-                json={"user_type": user_type}
-            )
-
-            if patch.status_code not in (200, 204):
-                return Response({
-                    'success': False,
-                    'message': "User created but failed to update user_type in profile.",
-                    'data': {
-                        'error': patch.json()
-                    }
-                }, status=500)
-
-        return Response({
-            'success': True,
-            'message': 'Registration successful',
-            'data': {
-                'user': user
+        else :
+            response_data = response.json()
+            user_id = response_data.get('user', {}).get('id')
+            
+            formatted_response = {
+                'success': True,
+                'message': 'Signup successful',
+                'data': {
+                    'userId': user_id,
+                    'access_token': response_data.get('access_token'),
+                    'refresh_token': response_data.get('refresh_token'),
+                    'expires_in': response_data.get('expires_in'),
+                    'expires_at': response_data.get('expires_at'),
+                    'token_type': response_data.get('token_type')
+                }
             }
-        }, status=201)
+            return Response(formatted_response)
+
