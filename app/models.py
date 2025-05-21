@@ -213,8 +213,11 @@ class Prescriptions(models.Model):
     additional_notes = models.TextField(blank=True, null=True)
     pdf_url = models.TextField(blank=True, null=True)
     is_synced = models.BooleanField()
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
+    #created_at = models.DateTimeField()
+    #updated_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)  
+    updated_at = models.DateTimeField(auto_now=True)     
+
     local_id = models.TextField(unique=True, blank=True, null=True)
 
     class Meta:

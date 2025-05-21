@@ -45,14 +45,24 @@ class AppointmentSerializer(serializers.ModelSerializer):
                  'reason', 'notes', 'qr_code', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
+
+
 class PrescriptionSerializer(serializers.ModelSerializer):
-    patient = ProfileSerializer(read_only=True)
-    doctor = DoctorProfileSerializer(read_only=True)
-    appointment = AppointmentSerializer(read_only=True)
+    patient_id = serializers.UUIDField(source='patient.id', read_only=True)
+    doctor_id = serializers.UUIDField(source='doctor.id', read_only=True)
+    appointment_id = serializers.UUIDField(source='appointment.id', read_only=True)
 
     class Meta:
         model = Prescriptions
-        fields = '__all__'
+        fields = [
+            'id',
+            'patient', 'doctor', 'appointment',
+            'patient_id', 'doctor_id', 'appointment_id',
+            'prescription_date', 'details', 'additional_notes',
+            'pdf_url', 'is_synced', 'local_id',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
 
 class FavoriteDoctorSerializer(serializers.ModelSerializer):
     patient = ProfileSerializer(read_only=True)

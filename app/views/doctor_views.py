@@ -134,7 +134,7 @@ class DoctorProfileView(APIView):
         
         # Try to fetch the doctor with the given ID
         try:
-            doctor = DoctorProfiles.objects.select_related('user').get(user_id=doctor_id)
+            doctor = DoctorProfiles.objects.select_related('user').get(id=doctor_id)
         except DoctorProfiles.DoesNotExist:
             return Response({"detail": "Doctor not found"}, status=status.HTTP_404_NOT_FOUND)
         
