@@ -9,7 +9,11 @@ class LoginView(APIView):
         password = request.data.get('password')
 
         if not email or not password:
-            return Response({'detail': 'Email and password are required.'}, status=400)
+            return Response({
+                'success': False,
+                'message': 'Email and password are required.',
+                'data': None
+            }, status=400)
 
         response = requests.post(
             f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password",
@@ -21,9 +25,32 @@ class LoginView(APIView):
         )
 
         if response.status_code == 200:
-            return Response(response.json())  
+            response_data = response.json()
+            # Extract user ID from the response
+            user_id = response_data.get('user', {}).get('id')
+            
+            formatted_response = {
+                'success': True,
+                'message': 'Login successful',
+                'data': {
+                    'access_token': response_data.get('access_token'),
+                    'refresh_token': response_data.get('refresh_token'),
+                    'userId': user_id,
+                    'expires_in': response_data.get('expires_in'),
+                    'expires_at': response_data.get('expires_at'),
+                    'token_type': response_data.get('token_type')
+                }
+            }
+            return Response(formatted_response)
         else:
-            return Response(response.json(), status=response.status_code)
+            error_data = response.json()
+            error_message = error_data.get('error_description', 'Login failed')
+            
+            return Response({
+                'success': False,
+                'message': error_message,
+                'data': None
+            }, status=response.status_code)
 
 
 class SignUpView(APIView):
@@ -33,7 +60,11 @@ class SignUpView(APIView):
         user_type = request.data.get("user_type") 
 
         if not email or not password:
-            return Response({"detail": "Email and password are required."}, status=400)
+            return Response({
+                'success': False,
+                'message': 'Email and password are required.',
+                'data': None
+            }, status=400)
 
         payload = {
             "email": email,
@@ -53,12 +84,21 @@ class SignUpView(APIView):
         )
 
         if response.status_code != 200:
-            return Response(response.json(), status=response.status_code)
-        
+            error_data = response.json()
+            error_message = error_data.get('error_description', 'Registration failed')
+            return Response({
+                'success': False,
+                'message': error_message,
+                'data': None
+            }, status=response.status_code)
         
         user = response.json().get("user")
         if not user:
-            return Response({"detail": "User created but no user data returned."}, status=500)
+            return Response({
+                'success': False,
+                'message': "User created but no user data returned.",
+                'data': None
+            }, status=500)
 
         user_id = user["id"]
 
@@ -76,8 +116,17 @@ class SignUpView(APIView):
 
             if patch.status_code not in (200, 204):
                 return Response({
-                    "detail": "User created but failed to update user_type in profile.",
-                    "error": patch.json()
+                    'success': False,
+                    'message': "User created but failed to update user_type in profile.",
+                    'data': {
+                        'error': patch.json()
+                    }
                 }, status=500)
 
-        return Response({"user": user}, status=201)
+        return Response({
+            'success': True,
+            'message': 'Registration successful',
+            'data': {
+                'user': user
+            }
+        }, status=201)

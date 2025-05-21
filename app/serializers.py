@@ -63,3 +63,35 @@ class NotificationSerializer(serializers.ModelSerializer):
         model = Notifications
         fields = '__all__'
 
+class DoctorDetailSerializer(serializers.ModelSerializer):
+    # Nested profile information
+    profiles = serializers.SerializerMethodField()
+    # Nested availability information
+    doctor_availability = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = DoctorProfiles
+        fields = [
+            'id', 'user_id', 'specialty', 'hospital_name', 'hospital_address',
+            'location_lat', 'location_lng', 'bio', 'years_of_experience',
+            'contact_information', 'average_rating', 'created_at', 'updated_at',
+            'profiles', 'doctor_availability'
+        ]
+    
+    def get_profiles(self, obj):
+        """Get profile information from related user"""
+        if not obj.user:
+            return None
+        return {
+            'full_name': obj.user.full_name,
+            'avatar_url': obj.user.avatar_url
+        }
+    
+    def get_doctor_availability(self, obj):
+        """Get availability days that are marked as available"""
+        availabilities = DoctorAvailability.objects.filter(
+            doctor_id=obj.id,
+            is_available=True
+        ).values('day_of_week', 'is_available')
+        
+        return list(availabilities)

@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from ..utils import get_user_id_from_token
+from datetime import datetime
+
 
 from ..models import (
     Profiles,
@@ -13,6 +15,7 @@ from ..serializers import (
     DoctorProfileSerializer,
     DoctorAvailabilitySerializer,
     FavoriteDoctorSerializer,
+    DoctorDetailSerializer
 )
 
 import uuid
@@ -112,11 +115,16 @@ class DoctorProfileView(APIView):
         
         return Response(result)
     
-    def get_doctor_detail(self, request):
+
+class DoctorDetailView(APIView):
+    def get(self, request, doctor_id=None):
         """
         Get detailed information for a specific doctor including availability and profile information
         """
-        doctor_id = request.query_params.get('id')
+        # Get doctor ID either from URL path or query parameters
+        if not doctor_id:
+            doctor_id = request.query_params.get('id')
+            
         if not doctor_id:
             return Response({"detail": "Doctor ID is required"}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -127,44 +135,13 @@ class DoctorProfileView(APIView):
         
         # Try to fetch the doctor with the given ID
         try:
-            doctor = DoctorProfiles.objects.select_related('user').get(id=doctor_id)
+            doctor = DoctorProfiles.objects.select_related('user').get(user_id=doctor_id)
         except DoctorProfiles.DoesNotExist:
             return Response({"detail": "Doctor not found"}, status=status.HTTP_404_NOT_FOUND)
         
-        # Get available days for this doctor
-        available_days = DoctorAvailability.objects.filter(
-            doctor_id=doctor_id,
-            is_available=True
-        ).values('day_of_week', 'is_available')
-        
-        # Build the response with the same structure as the Supabase query
-        result = {
-            'id': doctor.id,
-            'user_id': doctor.user_id,
-            'specialty': doctor.specialty,
-            'hospital_name': doctor.hospital_name,
-            'hospital_address': doctor.hospital_address,
-            'location':{
-                'lat': doctor.location_lat,
-                'lng': doctor.location_lng
-            },
-            'bio': doctor.bio,
-            'years_of_experience': doctor.years_of_experience,
-            'contact_information': doctor.contact_information,
-            'average_rating': doctor.average_rating,
-            'created_at': doctor.created_at,
-            'updated_at': doctor.updated_at,
-            'doctor_availability': list(available_days),
-            'profiles': {
-                'full_name': doctor.user.full_name if doctor.user else None,
-                'email': doctor.user.email if doctor.user else None,
-                'phone_number': doctor.user.phone_number if doctor.user else None,
-                'address': doctor.user.address if doctor.user else None,
-                'avatar_url': doctor.user.avatar_url if doctor.user else None
-            }
-        }
-        
-        return Response(result)
+        # Serialize the doctor data with our detailed serializer
+        serializer = DoctorDetailSerializer(doctor)
+        return Response(serializer.data)
     
 
     
