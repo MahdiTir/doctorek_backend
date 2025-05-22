@@ -1,0 +1,209 @@
+# views.py
+from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods
+from supabase import create_client
+from django.conf import settings
+import json
+from datetime import datetime
+import uuid
+
+# Initialize Supabase client
+supabase = create_client(
+    settings.SUPABASE_URL,
+    settings.SUPABASE_KEY
+)
+
+@require_http_methods(["GET"])
+def get_available_slots(request):
+    """
+    Get available time slots for a doctor on a specific date
+    Query params: doctor_id, date (YYYY-MM-DD format)
+    """
+    try:
+        # Get parameters from request
+        doctor_id = request.GET.get('doctor_id')
+        date_str = request.GET.get('date')
+        
+        # Validate parameters
+        if not doctor_id or not date_str:
+            return JsonResponse({
+                'error': 'Both doctor_id and date parameters are required'
+            }, status=400)
+        
+        # Validate UUID format
+        try:
+            uuid.UUID(doctor_id)
+        except ValueError:
+            return JsonResponse({
+                'error': 'Invalid doctor_id format. Must be a valid UUID'
+            }, status=400)
+        
+        # Validate date format
+        try:
+            datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            return JsonResponse({
+                'error': 'Invalid date format. Use YYYY-MM-DD'
+            }, status=400)
+        
+        # Call the Supabase function
+        result = supabase.rpc('get_available_slots', {
+            'p_doctor_id': doctor_id,
+            'p_date': date_str
+        }).execute()
+        
+        # Process the result
+        available_slots = []
+        if result.data:
+            for slot in result.data:
+                available_slots.append({
+                    'start_time': slot['start_time'],
+                    'end_time': slot['end_time']
+                })
+        
+        return JsonResponse({
+            'success': True,
+            'doctor_id': doctor_id,
+            'date': date_str,
+            'available_slots': available_slots,
+            'total_slots': len(available_slots)
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Failed to get available slots: {str(e)}'
+        }, status=500)
+
+
+# Alternative: Class-based view
+from django.views import View
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AvailableSlotsView(View):
+    
+    def get(self, request):
+        return get_available_slots(request)
+    
+    def post(self, request):
+        """
+        POST version accepting JSON body
+        Body: {"doctor_id": "uuid", "date": "YYYY-MM-DD"}
+        """
+        try:
+            data = json.loads(request.body)
+            doctor_id = data.get('doctor_id')
+            date_str = data.get('date')
+            
+            if not doctor_id or not date_str:
+                return JsonResponse({
+                    'error': 'Both doctor_id and date are required'
+                }, status=400)
+            
+            # Validate UUID
+            try:
+                uuid.UUID(doctor_id)
+            except ValueError:
+                return JsonResponse({
+                    'error': 'Invalid doctor_id format'
+                }, status=400)
+            
+            # Call Supabase function
+            result = supabase.rpc('get_available_slots', {
+                'p_doctor_id': doctor_id,
+                'p_date': date_str
+            }).execute()
+            
+            return JsonResponse({
+                'success': True,
+                'data': result.data or []
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'error': 'Invalid JSON in request body'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'error': str(e)
+            }, status=500)
+
+
+# Service class for reusability
+class DoctorSlotService:
+    def __init__(self):
+        self.supabase = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_KEY
+        )
+    
+    def get_available_slots(self, doctor_id, date):
+        """
+        Get available slots for a doctor on a specific date
+        
+        Args:
+            doctor_id (str): UUID of the doctor
+            date (str): Date in YYYY-MM-DD format
+            
+        Returns:
+            list: List of available time slots
+        """
+        try:
+            result = self.supabase.rpc('get_available_slots', {
+                'p_doctor_id': str(doctor_id),
+                'p_date': date
+            }).execute()
+            
+            return result.data or []
+            
+        except Exception as e:
+            raise Exception(f"Failed to get available slots: {str(e)}")
+    
+    def format_slots_for_frontend(self, slots):
+        """
+        Format slots for frontend consumption
+        """
+        formatted_slots = []
+        for slot in slots:
+            formatted_slots.append({
+                'start_time': slot['start_time'],
+                'end_time': slot['end_time'],
+                'display_time': f"{slot['start_time']} - {slot['end_time']}"
+            })
+        return formatted_slots
+
+
+# Usage in another view or model
+def book_appointment_view(request):
+    """Example of using the service in another view"""
+    if request.method == 'GET':
+        doctor_id = request.GET.get('doctor_id')
+        date = request.GET.get('date')
+        
+        if doctor_id and date:
+            slot_service = DoctorSlotService()
+            try:
+                slots = slot_service.get_available_slots(doctor_id, date)
+                formatted_slots = slot_service.format_slots_for_frontend(slots)
+                
+                return JsonResponse({
+                    'available_slots': formatted_slots
+                })
+            except Exception as e:
+                return JsonResponse({
+                    'error': str(e)
+                }, status=500)
+    
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+
+# urls.py configuration
+from django.urls import path
+
+urlpatterns = [
+    path('api/slots/available/', get_available_slots, name='get_available_slots'),
+    path('api/slots/', AvailableSlotsView.as_view(), name='available_slots_view'),
+    path('api/appointments/book/', book_appointment_view, name='book_appointment'),
+]

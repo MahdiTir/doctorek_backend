@@ -21,16 +21,43 @@ class DoctorAvailabilitySerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
+    #availability = DoctorAvailabilitySerializer(many=True, read_only=True)
+    #user = ProfileSerializer(read_only=True)
+
     availability = DoctorAvailabilitySerializer(many=True, read_only=True)
+    user_id = serializers.UUIDField(source='user.id')
     user = ProfileSerializer(read_only=True)
 
     class Meta:
         model = DoctorProfiles
-        fields = '__all__'
+        fields = [
+            'id',
+            'user', 'user_id',
+            'specialty',
+            'hospital_name',
+            'hospital_address',
+            'location_lat',
+            'location_lng',
+            'bio',
+            'years_of_experience',
+            'contact_information',
+            'average_rating',
+            'availability',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'average_rating']
     
+    #def create(self, validated_data):
+        #return DoctorProfiles.objects.create(**validated_data)
     def create(self, validated_data):
-        return DoctorProfiles.objects.create(**validated_data)
-
+        user_data = validated_data.pop('user', None)
+        if user_data:
+            user_id = user_data.get('id')
+            validated_data['user_id'] = user_id
+        return super().create(validated_data)
+    
+    
 class AppointmentSerializer(serializers.ModelSerializer):
     patient_id = serializers.UUIDField(source='patient.id',read_only=True)
     doctor_id = serializers.UUIDField(source='doctor.id',read_only=True)

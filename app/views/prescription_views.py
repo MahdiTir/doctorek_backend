@@ -50,8 +50,26 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
 
             # Get appointment if provided
             appointment_id = request.data.get('appointment_id')
-            appointment = None
+            patient_id = request.data.get('patient_id')
+
+            # Check if appointment already has a prescription
+            existing_prescription = Prescriptions.objects.filter(appointment_id=appointment_id).first()
+            if existing_prescription:
+                return Response(
+                    {"detail": "This appointment already has a prescription"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             appointment = Appointments.objects.get(id=appointment_id)
+
+             # Verify that the doctor creating the prescription is the same as in appointment
+            if str(appointment.doctor.id) != str(doctor.id):
+                return Response({"detail": "You can only create prescriptions for your own appointments"}, 
+                            status=status.HTTP_403_FORBIDDEN)
+            
+            # Verify that the patient in the request matches the appointment
+            if str(appointment.patient.id) != str(patient_id):
+                return Response({"detail": "Patient ID does not match the appointment"}, 
+                            status=status.HTTP_400_BAD_REQUEST)
 
             if appointment is None:
                 return Response({"detail": "appointment id not valid"}, 

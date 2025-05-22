@@ -124,8 +124,8 @@ class DoctorProfiles(models.Model):
     years_of_experience = models.IntegerField(blank=True, null=True)
     contact_information = models.JSONField(blank=True, null=True)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, blank=True, null=True)
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)  
+    updated_at = models.DateTimeField(auto_now=True)   
 
     class Meta:
         managed = False

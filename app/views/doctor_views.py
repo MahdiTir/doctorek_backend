@@ -2,7 +2,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from ..utils import get_user_id_from_token
-from datetime import datetime
+from datetime import datetime, timedelta
+from rest_framework.decorators import api_view
+from django.utils import timezone
+from django.db.models import Q
 
 
 from ..models import (
@@ -10,6 +13,8 @@ from ..models import (
     DoctorProfiles,
     DoctorAvailability,
     FavoriteDoctors,
+    Appointments
+    
 )
 from ..serializers import (
     DoctorProfileSerializer,
@@ -20,48 +25,62 @@ from ..serializers import (
 
 import uuid
 
+
+
 class DoctorProfileView(APIView):
     queryset = DoctorProfiles.objects.all()
     serializer_class = DoctorProfileSerializer
 
-    def create(self, request):
-        
+    def post(self, request):
+        """Create a new doctor profile"""
         user_id = get_user_id_from_token(request)
         if not user_id:
             return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
+            # Get the user profile
             user = Profiles.objects.get(id=user_id)
+            
+            # Verify that the user is a doctor
+            if user.user_type != Profiles.UserType.DOCTOR:
+                return Response({"detail": "Only doctors can create doctor profiles"}, 
+                            status=status.HTTP_403_FORBIDDEN)
+
+            # Check if doctor profile already exists
+            existing_profile = DoctorProfiles.objects.filter(user_id=user_id).first()
+            if existing_profile:
+                return Response({
+                    "detail": "Doctor profile already exists for this user"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            
+            
+            # Create doctor profile data
+            data = {
+                'id': uuid.uuid4(),
+                #'user': user.id,  
+                'user_id': user_id, 
+                'specialty': request.data.get('specialty'),
+                'hospital_name': request.data.get('hospital_name'),
+                'hospital_address': request.data.get('hospital_address'),
+                'bio': request.data.get('bio'),
+                'years_of_experience': request.data.get('years_of_experience'),
+                'contact_information': request.data.get('contact_information', {}),
+            }
+
+            serializer = self.serializer_class(data=data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+                
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         except Profiles.DoesNotExist:
-            return Response({"detail": "User profile not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        doctor_id = uuid.uuid4()
-        print(" Debug loggeduser .id:",user.id)
-        print(" Debug user_id:",user_id)
-        
-        data = {
-            #**request.data,
-            'id': doctor_id,
-            'user': user_id,
-            'created_at': datetime.now(),
-            'updated_at': datetime.now()
-        }
-
-        # Add all other fields from request.data
-        for key, value in request.data.items():
-            if key not in data:
-                data[key] = value
-            # Print debug information
-        print("Debug - Data being sent to serializer:", data)
-        print("Debug - User ID:", user.id)
-
-        serializer = self.serializer_class(data=data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        print("Debug - Serializer errors:", serializer.errors)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({"detail": "User profile not found"}, 
+                        status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"detail": str(e)}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     def get(self, request):
         """
         Get doctor profiles ordered by average rating with related profile information
@@ -120,27 +139,54 @@ class DoctorProfileView(APIView):
         """
         Get detailed information for a specific doctor including availability and profile information
         """
-        # Get doctor ID either from URL path or query parameters
         if not doctor_id:
             doctor_id = request.query_params.get('id')
             
         if not doctor_id:
             return Response({"detail": "Doctor ID is required"}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get authenticated user (optional, can be removed if no auth needed for this endpoint)
         user_id = get_user_id_from_token(request)
         if not user_id:
             return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
         
-        # Try to fetch the doctor with the given ID
         try:
             doctor = DoctorProfiles.objects.select_related('user').get(id=doctor_id)
+            
+            # Get doctor's availability
+            available_days = DoctorAvailability.objects.filter(
+                doctor_id=doctor.id,
+                is_available=True
+            ).values('day_of_week', 'start_time', 'end_time', 'slot_duration')
+            
+            # Format response data
+            doctor_data = {
+                'id': doctor.id,
+                'specialty': doctor.specialty,
+                'hospital_name': doctor.hospital_name,
+                'hospital_address': doctor.hospital_address,
+                'location': {
+                    'lat': doctor.location_lat,
+                    'lng': doctor.location_lng
+                },
+                'bio': doctor.bio,
+                'years_of_experience': doctor.years_of_experience,
+                'contact_information': doctor.contact_information,
+                'average_rating': doctor.average_rating,
+                'profiles': {
+                    'full_name': doctor.user.full_name if doctor.user else None,
+                    'email': doctor.user.email if doctor.user else None,
+                    'phone_number': doctor.user.phone_number if doctor.user else None,
+                    'avatar_url': doctor.user.avatar_url if doctor.user else None
+                },
+                'availability': list(available_days)
+            }
+            
+            return Response(doctor_data)
+            
         except DoctorProfiles.DoesNotExist:
             return Response({"detail": "Doctor not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        # Serialize the doctor data with our detailed serializer
-        serializer = DoctorDetailSerializer(doctor)
-        return Response(serializer.data)
+    
+
     
 
 class DoctorDetailView(APIView):
@@ -168,9 +214,7 @@ class DoctorDetailView(APIView):
         return Response(serializer.data)
     
     
-    
 
-    
     
     
 
@@ -197,3 +241,96 @@ class FavoriteDoctorViewSet(viewsets.ModelViewSet):
         if patient_id is not None:
             queryset = queryset.filter(patient_id=patient_id)
         return queryset
+    
+
+
+class DoctorAvailabilityView(APIView):
+    def get(self, request):
+        """
+        Get available time slots for a doctor, excluding booked appointments
+        """
+        doctor_id = request.query_params.get('doctor_id')
+        date = request.query_params.get('date')  # Optional: Filter by specific date
+
+        if not doctor_id:
+            return Response(
+                {"detail": "Doctor ID is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Get doctor's general availability
+            availability = DoctorAvailability.objects.filter(
+                doctor_id=doctor_id,
+                is_available=True
+            )
+
+            # Get booked appointments
+            appointments = Appointments.objects.filter(
+                doctor_id=doctor_id,
+                status__in=['scheduled', 'confirmed', 'in_progress']
+            )
+
+            if date:
+                appointments = appointments.filter(appointment_date=date)
+
+            available_slots = []
+            
+            for slot in availability:
+                # Convert availability to time slots
+                current_time = datetime.combine(
+                    datetime.min, 
+                    slot.start_time
+                )
+                end_time = datetime.combine(
+                    datetime.min, 
+                    slot.end_time
+                )
+                
+                while current_time < end_time:
+                    slot_end = current_time + timedelta(minutes=slot.slot_duration)
+                    
+                    # Check if slot overlaps with any appointment
+                    is_available = True
+                    for appt in appointments:
+                        appt_start = datetime.combine(
+                            datetime.min, 
+                            appt.start_time
+                        )
+                        appt_end = datetime.combine(
+                            datetime.min, 
+                            appt.end_time
+                        )
+                        
+                        if (current_time < appt_end and 
+                            slot_end > appt_start and 
+                            slot.day_of_week == appt.appointment_date.strftime('%A').lower()):
+                            is_available = False
+                            break
+                    
+                    if is_available:
+                        available_slots.append({
+                            'day_of_week': slot.day_of_week,
+                            'start_time': current_time.time().strftime('%H:%M'),
+                            'end_time': slot_end.time().strftime('%H:%M'),
+                            'duration': slot.slot_duration
+                        })
+                    
+                    current_time = slot_end
+
+            return Response({
+                'doctor_id': doctor_id,
+                'date': date,
+                'available_slots': available_slots
+            })
+
+        except DoctorProfiles.DoesNotExist:
+            return Response(
+                {"detail": "Doctor not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"detail": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
