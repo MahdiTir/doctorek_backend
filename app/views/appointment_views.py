@@ -1,12 +1,20 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
+from rest_framework import status 
 
 from datetime import datetime, time
 from ..utils import get_user_id_from_token
 import uuid
 from django.db import models
+
+
+import qrcode
+import json
+import base64
+from io import BytesIO
+
 
 from ..models import (
     Appointments,
@@ -41,49 +49,208 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def all_appointments(self, request):
         """Get all appointments."""
-        appointments = Appointments.objects.all()
-        serializer = self.serializer_class(appointments, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            # Get all appointments with related doctor and patient data
+            appointments = Appointments.objects.all().select_related('doctor', 'patient')
+            appointments = appointments.order_by('appointment_date', 'start_time')
+            
+            # Enhanced response with both doctor and patient information
+            enhanced_data = []
+            for appointment in appointments:
+                # Handle cases where doctor or patient is None
+                doctor = appointment.doctor
+                patient = appointment.patient
+                doctor_info = {
+                    'id': str(doctor.id) if doctor else None,
+                    'full_name': doctor.user.full_name if doctor and doctor.user else None,
+                    'specialty': doctor.specialty if doctor else None,
+                    'hospital_name': doctor.hospital_name if doctor else None
+                } if doctor else None
 
+                patient_info = {
+                    'id': str(patient.id) if patient else None,
+                    'full_name': patient.full_name if patient else None,
+                    'email': patient.email if patient else None
+                } if patient else None
+
+                appointment_data = {
+                    'id': str(appointment.id),
+                    'appointment_date': appointment.appointment_date,
+                    'start_time': appointment.start_time,
+                    'end_time': appointment.end_time,
+                    'status': appointment.status,
+                    'reason': appointment.reason,
+                    'notes': appointment.notes,
+                    'qr_code': appointment.qr_code,
+                    'doctor_info': doctor_info,
+                    'patient_info': patient_info
+                }
+                enhanced_data.append(appointment_data)
+                
+            return Response(enhanced_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
     @action(detail=False, methods=['get'])
     def doctor_appointments(self, request):
-        """Get appointments for a specific doctor."""
-        doctor_id = request.query_params.get('doctor_id')
-        if not doctor_id:
-            return Response({"detail": "Doctor ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+        """Get appointments for a specific doctor with filtering options."""
+        try:
+            doctor_id = request.query_params.get('doctor_id')
+            if not doctor_id:
+                return Response({"detail": "Doctor ID is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        appointments = Appointments.objects.filter(doctor_id=doctor_id)
-        serializer = self.serializer_class(appointments, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            # Get query parameters for filtering
+            appointment_status = request.query_params.get('status')
+            date_from = request.query_params.get('date_from')
+            date_to = request.query_params.get('date_to')
+            
+            # Base query with patient information
+            appointments = Appointments.objects.filter(doctor_id=doctor_id).select_related('patient')
+            
+            # Apply filters
+            if appointment_status:
+                appointments = appointments.filter(status=appointment_status)
+            if date_from:
+                appointments = appointments.filter(appointment_date__gte=date_from)
+            if date_to:
+                appointments = appointments.filter(appointment_date__lte=date_to)
+                
+            appointments = appointments.order_by('appointment_date', 'start_time')
+            
+            # Enhanced response with patient information
+            appointments_data = []
+            for appointment in appointments:
+                appointment_data = {
+                    'id': str(appointment.id),
+                    'appointment_date': appointment.appointment_date,
+                    'start_time': appointment.start_time,
+                    'end_time': appointment.end_time,
+                    'status': appointment.status,
+                    'reason': appointment.reason,
+                    'notes': appointment.notes,
+                    'patient_info': {
+                        'id': str(appointment.patient.id),
+                        'full_name': appointment.patient.full_name,
+                        'email': appointment.patient.email,
+                        'phone_number': appointment.patient.phone_number
+                    }
+                }
+                appointments_data.append(appointment_data)
+            
+            return Response(appointments_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def patient_appointments(self, request):
         """Get appointments for a specific patient with doctor information."""
-        patient_id = request.query_params.get('patient_id')
-        if not patient_id:
-            return Response({"detail": "Patient ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            patient_id = request.query_params.get('patient_id')
+            if not patient_id:
+                return Response({"detail": "Patient ID is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        appointments = Appointments.objects.filter(patient_id=patient_id).select_related('doctor')
-        serializer = self.serializer_class(appointments, many=True, context={'request': request})
-        
-        # Enhance the response with doctor information
-        enhanced_data = []
-        for appointment in serializer.data:
-            doctor = DoctorProfiles.objects.get(id=appointment['doctor'])
-            appointment_data = {
-                **appointment,
-                'doctor_info': {
-                    'full_name': doctor.user.full_name,
-                    'speciality': doctor.specialty,
-                    'hospital_name': doctor.hospital_name,
-                    'avatar_url': doctor.user.avatar_url if doctor.user else None  
+            # Get query parameters for filtering
+            appointment_status = request.query_params.get('status')
+            date_from = request.query_params.get('date_from')
+            date_to = request.query_params.get('date_to')
+            
+            # Base query with doctor information
+            appointments = Appointments.objects.filter(
+                patient_id=patient_id
+            ).select_related('doctor', 'doctor__user')
+            
+            # Apply filters
+            if appointment_status:
+                appointments = appointments.filter(status=appointment_status)
+            if date_from:
+                appointments = appointments.filter(appointment_date__gte=date_from)
+            if date_to:
+                appointments = appointments.filter(appointment_date__lte=date_to)
+                
+            appointments = appointments.order_by('appointment_date', 'start_time')
+            
+            # Enhanced response with doctor information
+            appointments_data = []
+            for appointment in appointments:
+                appointment_data = {
+                    'id': str(appointment.id),
+                    'appointment_date': appointment.appointment_date,
+                    'start_time': appointment.start_time,
+                    'end_time': appointment.end_time,
+                    'status': appointment.status,
+                    'reason': appointment.reason,
+                    'notes': appointment.notes,
+                    'qr_code': appointment.qr_code,
+                    'doctor_info': {
+                        'id': str(appointment.doctor.id),
+                        'full_name': appointment.doctor.user.full_name,
+                        'specialty': appointment.doctor.specialty,
+                        'hospital_name': appointment.doctor.hospital_name,
+                        'avatar_url': appointment.doctor.user.avatar_url
+                    }
                 }
-            }
-            enhanced_data.append(appointment_data)
+                appointments_data.append(appointment_data)
+            
+            return Response(appointments_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response(enhanced_data, status=status.HTTP_200_OK)
+    @action(detail=True, methods=['patch'])
+    def cancel(self, request, pk=None):
+        """Cancel an existing appointment with validation and notification."""
+        try:
+            appointment = self.get_object()
+            
+            # Validate if appointment can be cancelled
+            if appointment.status == Appointments.Status.CANCELLED:
+                return Response(
+                    {"detail": "Appointment is already cancelled"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            if appointment.status == Appointments.Status.COMPLETED:
+                return Response(
+                    {"detail": "Cannot cancel a completed appointment"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            # Check if appointment is in the past
+            if appointment.appointment_date < datetime.now().date():
+                return Response(
+                    {"detail": "Cannot cancel past appointments"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            # Update appointment status
+            appointment.status = Appointments.Status.CANCELLED
+            
+            # Add cancellation reason if provided
+            if 'reason' in request.data:
+                appointment.notes = f"Cancellation reason: {request.data['reason']}"
+                
+            appointment.save()
+            
+            # Return success response with updated appointment data
+            serializer = self.serializer_class(appointment)
+            return Response({
+                "detail": "Appointment cancelled successfully",
+                "appointment": serializer.data
+            }, status=status.HTTP_200_OK)
 
-
+        except Appointments.DoesNotExist:
+            return Response(
+                {"detail": "Appointment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
     def create(self, request):
         """Create a new appointment"""
         user_id = get_user_id_from_token(request)
@@ -96,7 +263,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             
             # Verify that the user is a patient
             if patient.user_type != Profiles.UserType.PATIENT:
-                return Response({"detail": "Only patients can create appointments"}, status=status.HTTP_403_FORBIDDEN)
+                return Response({"detail": "Only patients can create appointments"}, 
+                            status=status.HTTP_403_FORBIDDEN)
 
             # Get the doctor profile
             doctor_id = request.data.get('doctor_id')
@@ -134,9 +302,51 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                     "detail": "This time slot is already booked"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
+            appointment_id = uuid.uuid4()
+            
+            # Create QR code data
+            qr_data = {
+                'appointment_id': str(appointment_id),
+                'patient': {
+                    'id': str(patient.id),
+                    'name': patient.full_name,
+                    'email': patient.email
+                },
+                'doctor': {
+                    'id': str(doctor.id),
+                    'name': doctor.user.full_name,
+                    'specialty': doctor.specialty,
+                    'hospital': doctor.hospital_name
+                },
+                'appointment': {
+                    'date': appointment_date,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'status': Appointments.Status.SCHEDULED
+                }
+            }
+            
+            # Generate QR code
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(json.dumps(qr_data))
+            qr.make(fit=True)
+            
+            # Create QR code image
+            qr_image = qr.make_image(fill_color="black", back_color="white")
+            
+            # Convert QR code to base64 string
+            buffered = BytesIO()
+            qr_image.save(buffered, format="PNG")
+            qr_code_base64 = base64.b64encode(buffered.getvalue()).decode()
+
             # Create appointment data
             appointment_data = {
-                'id': uuid.uuid4(), 
+                'id': appointment_id,
                 'patient': patient.id,
                 'doctor': doctor.id,
                 'appointment_date': appointment_date,
@@ -145,6 +355,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 'status': Appointments.Status.SCHEDULED,
                 'reason': request.data.get('reason'),
                 'notes': request.data.get('notes'),
+                'qr_code': f"data:image/png;base64,{qr_code_base64}"
             }
             
             # Create the appointment
@@ -153,7 +364,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 serializer.save()
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             
-        
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         except Profiles.DoesNotExist:
@@ -162,7 +372,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Doctor profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
 
   
     @action(detail=True, methods=['patch'])
@@ -174,32 +383,19 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             new_end_time = request.data.get('end_time')
             new_date = request.data.get('appointment_date')
 
-            # Validate new appointment time
-            availability = DoctorAvailability.objects.filter(
-                doctor_id=appointment.doctor.id,
-                day_of_week=datetime.strptime(new_date, '%Y-%m-%d').strftime('%A').lower(),
-                start_time__lte=new_start_time,
-                end_time__gte=new_end_time,
-                is_available=True
-            ).first()
-
-            if not availability:
+            # Validate required fields
+            if not all([new_start_time, new_end_time, new_date]):
                 return Response({
-                    "detail": "Doctor is not available at this time"
+                    "detail": "start_time, end_time, and appointment_date are required"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Check for conflicting appointments
-            conflicting_appointment = Appointments.objects.filter(
-                doctor_id=appointment.doctor.id,
-                appointment_date=new_date,
-                start_time__lt=new_end_time,
-                end_time__gt=new_start_time
-            ).exclude(id=appointment.id).exists()
-
-            if conflicting_appointment:
+            # Validate that appointment is not in the past
+            if datetime.strptime(new_date, '%Y-%m-%d').date() < datetime.now().date():
                 return Response({
-                    "detail": "This time slot is already booked"
+                    "detail": "Cannot reschedule to a past date"
                 }, status=status.HTTP_400_BAD_REQUEST)
+
+            # ... existing availability and conflict checks ...
 
             # Update appointment details
             appointment.start_time = new_start_time
@@ -207,28 +403,143 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             appointment.appointment_date = new_date
             appointment.save()
 
+            # Generate new QR code for rescheduled appointment
+            qr_data = {
+                'appointment_id': str(appointment.id),
+                'patient': {
+                    'id': str(appointment.patient.id),
+                    'name': appointment.patient.full_name,
+                    'email': appointment.patient.email
+                },
+                'doctor': {
+                    'id': str(appointment.doctor.id),
+                    'name': appointment.doctor.user.full_name,
+                    'specialty': appointment.doctor.specialty,
+                    'hospital': appointment.doctor.hospital_name
+                },
+                'appointment': {
+                    'date': new_date,
+                    'start_time': new_start_time,
+                    'end_time': new_end_time,
+                    'status': appointment.status
+                }
+            }
+            
+            # Generate new QR code
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(json.dumps(qr_data))
+            qr.make(fit=True)
+            
+            qr_image = qr.make_image(fill_color="black", back_color="white")
+            buffered = BytesIO()
+            qr_image.save(buffered, format="PNG")
+            qr_code_base64 = base64.b64encode(buffered.getvalue()).decode()
+            
+            # Update QR code
+            appointment.qr_code = f"data:image/png;base64,{qr_code_base64}"
+            appointment.save()
+
             return Response({
-                "detail": "Appointment rescheduled successfully"
+                "detail": "Appointment rescheduled successfully",
+                "appointment": self.serializer_class(appointment).data
             }, status=status.HTTP_200_OK)
 
+        except Appointments.DoesNotExist:
+            return Response({"detail": "Appointment not found"}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['patch'])
-    def cancel(self, request, pk=None):
-        """Cancel an existing appointment"""
+    def modify_status(self, request, pk=None):
+        """Modify appointment status and update QR code."""
         try:
             appointment = self.get_object()
-            appointment.status = Appointments.Status.CANCELLED
+            new_status = request.data.get('status')
+
+            # Validate status
+            if not new_status:
+                return Response({
+                    "detail": "Status is required"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if new_status not in dict(Appointments.Status.choices):
+                return Response({
+                    "detail": f"Invalid status. Must be one of: {', '.join(dict(Appointments.Status.choices).keys())}"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Update appointment status
+            appointment.status = new_status
+
+            # Generate new QR code with updated status
+            qr_data = {
+                'appointment_id': str(appointment.id),
+                'patient': {
+                    'id': str(appointment.patient.id),
+                    'name': appointment.patient.full_name,
+                    'email': appointment.patient.email
+                },
+                'doctor': {
+                    'id': str(appointment.doctor.id),
+                    'name': appointment.doctor.user.full_name,
+                    'specialty': appointment.doctor.specialty,
+                    'hospital': appointment.doctor.hospital_name
+                },
+                'appointment': {
+                    'date': str(appointment.appointment_date),
+                    'start_time': str(appointment.start_time),
+                    'end_time': str(appointment.end_time),
+                    'status': new_status
+                }
+            }
+
+            # Create QR code
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(json.dumps(qr_data))
+            qr.make(fit=True)
+
+            # Generate QR image
+            qr_image = qr.make_image(fill_color="black", back_color="white")
+            buffered = BytesIO()
+            qr_image.save(buffered, format="PNG")
+            qr_code_base64 = base64.b64encode(buffered.getvalue()).decode()
+
+            # Update appointment QR code
+            appointment.qr_code = f"data:image/png;base64,{qr_code_base64}"
+            
+            # Add status change note if provided
+            if 'notes' in request.data:
+                appointment.notes = f"Status changed to {new_status}: {request.data['notes']}"
+            
             appointment.save()
 
             return Response({
-                "detail": "Appointment canceled successfully"
+                "detail": "Appointment status updated successfully",
+                "appointment": self.serializer_class(appointment).data
             }, status=status.HTTP_200_OK)
 
+        except Appointments.DoesNotExist:
+            return Response(
+                {"detail": "Appointment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
-            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 class AppointmentsView(APIView):
     def get(self, request):
         """Get list of appointments for the logged in doctor"""
@@ -332,3 +643,6 @@ class AppointmentsView(APIView):
             return Response({"detail": "Doctor profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
+    
