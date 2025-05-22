@@ -109,7 +109,7 @@ class DoctorProfileView(APIView):
             available_days = DoctorAvailability.objects.filter(
                 doctor_id=doctor.id,
                 is_available=True
-            ).values('day_of_week', 'start_time', 'end_time', 'slot_duration')
+            ).values('day_of_week', 'start_time', 'end_time', 'slot_duration', 'is_available')
             
             doctor_data = {
                 'id': doctor.id,
@@ -156,7 +156,7 @@ class DoctorProfileView(APIView):
             available_days = DoctorAvailability.objects.filter(
                 doctor_id=doctor.id,
                 is_available=True
-            ).values('day_of_week', 'start_time', 'end_time', 'slot_duration')
+            ).values('day_of_week', 'start_time', 'end_time', 'slot_duration', 'is_available')
             
             # Format response data
             doctor_data = {
