@@ -47,50 +47,51 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
 
             if doctor.user.user_type != Profiles.UserType.DOCTOR:
                 return Response({"detail": "Only doctors can create prescriptions"}, 
-                              status=status.HTTP_403_FORBIDDEN)
+                            status=status.HTTP_403_FORBIDDEN)
             
-
             # Get appointment if provided
             appointment_id = request.data.get('appointment_id')
             patient_id = request.data.get('patient_id')
 
-            # Check if appointment already has a prescription
-            existing_prescription = Prescriptions.objects.filter(appointment_id=appointment_id).first()
-            if existing_prescription:
-                return Response(
-                    {"detail": "This appointment already has a prescription"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            appointment = Appointments.objects.get(id=appointment_id)
+            if appointment_id:
+                # Only verify appointment details if appointment_id is provided
+                try:
+                    appointment = Appointments.objects.get(id=appointment_id)
+                    
+                    # Check if appointment already has a prescription
+                    existing_prescription = Prescriptions.objects.filter(appointment_id=appointment_id).first()
+                    if existing_prescription:
+                        return Response(
+                            {"detail": "This appointment already has a prescription"}, 
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
 
-             # Verify that the doctor creating the prescription is the same as in appointment
-            if str(appointment.doctor.id) != str(doctor.id):
-                return Response({"detail": "You can only create prescriptions for your own appointments"}, 
-                            status=status.HTTP_403_FORBIDDEN)
-            
-            # Verify that the patient in the request matches the appointment
-            if str(appointment.patient.id) != str(patient_id):
-                return Response({"detail": "Patient ID does not match the appointment"}, 
-                            status=status.HTTP_400_BAD_REQUEST)
-
-            if appointment is None:
-                return Response({"detail": "appointment id not valid"}, 
-                              status=status.HTTP_403_FORBIDDEN)
-            
+                    # Verify that the doctor creating the prescription is the same as in appointment
+                    if str(appointment.doctor.id) != str(doctor.id):
+                        return Response({"detail": "You can only create prescriptions for your own appointments"}, 
+                                    status=status.HTTP_403_FORBIDDEN)
+                    
+                    # Verify that the patient in the request matches the appointment
+                    if str(appointment.patient.id) != str(patient_id):
+                        return Response({"detail": "Patient ID does not match the appointment"}, 
+                                    status=status.HTTP_400_BAD_REQUEST)
+                except Appointments.DoesNotExist:
+                    return Response({"detail": "Appointment not found"}, 
+                                status=status.HTTP_404_NOT_FOUND)
+            else:
+                appointment = None
 
             # Create prescription data
             prescription_data = {
                 'id': uuid.uuid4(),
-                'patient': request.data.get('patient_id'),
+                'patient': patient_id,
                 'doctor': doctor.id,
                 'appointment': appointment.id if appointment else None,
                 'prescription_date': datetime.now().date(),
                 'details': request.data.get('details', {}),
                 'additional_notes': request.data.get('additional_notes'),
                 'pdf_url': request.data.get('pdf_url'),
-                'is_synced': False,
-                #'created_at': datetime.now(),
-                #'updated_at': datetime.now(),
+                'is_synced': True,
                 'local_id': request.data.get('local_id')
             }
 
@@ -102,10 +103,10 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
 
         except DoctorProfiles.DoesNotExist:
             return Response({"detail": "Doctor profile not found"}, 
-                          status=status.HTTP_404_NOT_FOUND)
+                        status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"detail": str(e)}, 
-                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def update(self, request, pk=None):
         """Update an existing prescription"""
