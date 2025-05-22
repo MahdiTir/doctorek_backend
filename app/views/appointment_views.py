@@ -57,14 +57,30 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def patient_appointments(self, request):
-        """Get appointments for a specific patient."""
+        """Get appointments for a specific patient with doctor information."""
         patient_id = request.query_params.get('patient_id')
         if not patient_id:
             return Response({"detail": "Patient ID is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        appointments = Appointments.objects.filter(patient_id=patient_id)
-        serializer = self.serializer_class(appointments, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        appointments = Appointments.objects.filter(patient_id=patient_id).select_related('doctor')
+        serializer = self.serializer_class(appointments, many=True, context={'request': request})
+        
+        # Enhance the response with doctor information
+        enhanced_data = []
+        for appointment in serializer.data:
+            doctor = DoctorProfiles.objects.get(id=appointment['doctor'])
+            appointment_data = {
+                **appointment,
+                'doctor_info': {
+                    'full_name': doctor.user.full_name,
+                    'speciality': doctor.specialty,
+                    'hospital_name': doctor.hospital_name,
+                    'avatar_url': doctor.user.avatar_url if doctor.user else None  
+                }
+            }
+            enhanced_data.append(appointment_data)
+
+        return Response(enhanced_data, status=status.HTTP_200_OK)
 
 
     def create(self, request):
