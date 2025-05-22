@@ -32,7 +32,9 @@ from app.views import (
     PrescriptionViewSet,
     DoctorAvailabilityView,
     AppointmentsView,
-    DoctorPrescriptionsView
+    DoctorPrescriptionsView,
+    DoctorAvailabilityManagementView
+    
 )
 
 router = DefaultRouter()
@@ -59,5 +61,8 @@ urlpatterns = [
     path('api/doctor-appointments/', AppointmentsView.as_view(), name='doctor-appointments'),
     path('api/doctor-appointments/<uuid:appointment_id>/', AppointmentsView.as_view(), name='update-appointment-status'),
     path('api/doctor/prescriptions/', DoctorPrescriptionsView.as_view(), name='doctor-prescriptions'),
+    path('api/doctor/availability/', DoctorAvailabilityManagementView.as_view(), name='doctor-availability-management'),
+    path('api/doctor/availability/<uuid:availability_id>/', DoctorAvailabilityManagementView.as_view(), name='doctor-availability-detail'),
+
 ]
 

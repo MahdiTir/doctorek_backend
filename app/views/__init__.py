@@ -4,7 +4,7 @@ from .doctor_views import DoctorProfileView, DoctorAvailabilityViewSet, Favorite
 from .appointment_views import AppointmentViewSet, AppointmentsView
 from .notification_views import NotificationViewSet
 from .prescription_views import PrescriptionViewSet, DoctorPrescriptionsView
-
+from .availability_views import DoctorAvailabilityManagementView
 __all__ = [
     'LoginView',
     'SignUpView',
@@ -18,5 +18,6 @@ __all__ = [
     'PrescriptionViewSet',
     'DoctorAvailabilityView',
     'AppointmentsView',
-    'DoctorPrescriptionsView'
+    'DoctorPrescriptionsView',
+    'DoctorAvailabilityManagementView'
 ]

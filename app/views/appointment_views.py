@@ -275,32 +275,51 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             end_time = request.data.get('end_time')
             appointment_date = request.data.get('appointment_date')
             
+            # Convert times to datetime.time objects for comparison
+            appt_start = datetime.strptime(start_time, '%H:%M:%S').time()
+            appt_end = datetime.strptime(end_time, '%H:%M:%S').time()
+            appt_date = datetime.strptime(appointment_date, '%Y-%m-%d').date()
+
+            # Validate appointment is not in the past
+            if appt_date < datetime.now().date():
+                return Response({
+                    "detail": "Cannot create appointments for past dates"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
             # Check if doctor is available at this time
             availability = DoctorAvailability.objects.filter(
                 doctor_id=doctor_id,
                 day_of_week=datetime.strptime(appointment_date, '%Y-%m-%d').strftime('%A').lower(),
-                start_time__lte=start_time,
-                end_time__gte=end_time,
                 is_available=True
             ).first()
             
             if not availability:
                 return Response({
-                    "detail": "Doctor is not available at this time"
+                    "detail": "Doctor is not available on this day"
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Check for existing appointments at the same time
-            existing_appointment = Appointments.objects.filter(
-                doctor_id=doctor_id,
-                appointment_date=appointment_date,
-                start_time__lt=end_time,
-                end_time__gt=start_time
-            ).exclude(status=Appointments.Status.CANCELLED).exists()
-            
-            if existing_appointment:
+            # Check if appointment time is within availability time
+            if appt_start < availability.start_time or appt_end > availability.end_time:
                 return Response({
-                    "detail": "This time slot is already booked"
+                    "detail": "Appointment time must be within doctor's availability hours"
                 }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check for overlapping appointments
+            overlapping_appointments = Appointments.objects.filter(
+                doctor_id=doctor_id,
+                appointment_date=appointment_date
+            ).exclude(status=Appointments.Status.CANCELLED)
+            
+            # Check each existing appointment for overlap
+            for existing_appt in overlapping_appointments:
+                if (
+                    (appt_start >= existing_appt.start_time and appt_start < existing_appt.end_time) or  # Start time overlaps
+                    (appt_end > existing_appt.start_time and appt_end <= existing_appt.end_time) or      # End time overlaps
+                    (appt_start <= existing_appt.start_time and appt_end >= existing_appt.end_time)      # Appointment encompasses existing
+                ):
+                    return Response({
+                        "detail": "This time slot conflicts with an existing appointment"
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
             appointment_id = uuid.uuid4()
             
@@ -372,8 +391,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Doctor profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-  
+        
     @action(detail=True, methods=['patch'])
     def reschedule(self, request, pk=None):
         """Reschedule an existing appointment"""
