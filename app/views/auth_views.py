@@ -3,6 +3,10 @@ from rest_framework.response import Response
 import requests
 from django.conf import settings
 
+from ..models import (
+    Profiles,
+)
+
 class LoginView(APIView):
     def post(self, request):
         email = request.data.get('email')
@@ -28,6 +32,10 @@ class LoginView(APIView):
             response_data = response.json()
             # Extract user ID from the response
             user_id = response_data.get('user', {}).get('id')
+
+            # get user type from profile
+            profile = Profiles.objects.get(id=user_id)
+            user_type = profile.user_type if profile else None
             
             formatted_response = {
                 'success': True,
@@ -38,8 +46,9 @@ class LoginView(APIView):
                     'userId': user_id,
                     'expires_in': response_data.get('expires_in'),
                     'expires_at': response_data.get('expires_at'),
-                    'token_type': response_data.get('token_type')
-                }
+                    'token_type': response_data.get('token_type') ,
+                    'user_type': user_type
+                    }
             }
             return Response(formatted_response)
         else:

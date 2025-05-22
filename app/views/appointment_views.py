@@ -1,6 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.views import APIView
 
 from datetime import datetime, time
 from ..utils import get_user_id_from_token
@@ -225,5 +226,109 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 "detail": "Appointment canceled successfully"
             }, status=status.HTTP_200_OK)
 
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class AppointmentsView(APIView):
+    def get(self, request):
+        """Get list of appointments for the logged in doctor"""
+        # Get user id from the token
+        doctor_user_id = get_user_id_from_token(request)
+        if not doctor_user_id:
+            return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            # Get doctor profile
+            doctor_profile = DoctorProfiles.objects.get(user_id=doctor_user_id)
+            
+            # Verify that the user is a doctor
+            if doctor_profile.user.user_type != Profiles.UserType.DOCTOR:
+                return Response({"detail": "Only doctors can access their appointments"}, 
+                               status=status.HTTP_403_FORBIDDEN)
+            
+            # Get appointments for the doctor
+            appointments = Appointments.objects.filter(doctor=doctor_profile).select_related('patient')
+            
+            # Format the response with required information
+            appointments_data = []
+            for appointment in appointments:
+                appointment_data = {
+                    'id': appointment.id,
+                    'patient_name': appointment.patient.full_name,
+                    'patient_id': appointment.patient.id,
+                    'appointment_date': appointment.appointment_date,
+                    'start_time': appointment.start_time,
+                    'end_time': appointment.end_time,
+                    'status': appointment.status,
+                    'reason': appointment.reason,
+                    'notes': appointment.notes,
+                    'created_at': appointment.created_at,
+                }
+                appointments_data.append(appointment_data)
+            
+            return Response(appointments_data, status=status.HTTP_200_OK)
+            
+        except DoctorProfiles.DoesNotExist:
+            return Response({"detail": "Doctor profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+    def patch(self, request, appointment_id=None):
+        """Update appointment status for a doctor's appointment"""
+        # Get user id from the token
+        doctor_user_id = get_user_id_from_token(request)
+        if not doctor_user_id:
+            return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # Check if appointment_id was provided
+        if not appointment_id:
+            appointment_id = request.data.get('appointment_id')
+            if not appointment_id:
+                return Response({"detail": "Appointment ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get the new status
+        new_status = request.data.get('status')
+        if not new_status:
+            return Response({"detail": "Status is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate the status value
+        if new_status not in dict(Appointments.Status.choices):
+            return Response({"detail": f"Invalid status. Must be one of: {', '.join(dict(Appointments.Status.choices).keys())}"}, 
+                         status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get doctor profile
+            doctor_profile = DoctorProfiles.objects.get(user_id=doctor_user_id)
+            
+            # Verify that the user is a doctor
+            if doctor_profile.user.user_type != Profiles.UserType.DOCTOR:
+                return Response({"detail": "Only doctors can update appointment status"}, 
+                              status=status.HTTP_403_FORBIDDEN)
+            
+            # Get the appointment
+            try:
+                appointment = Appointments.objects.get(id=appointment_id, doctor=doctor_profile)
+            except Appointments.DoesNotExist:
+                return Response({"detail": "Appointment not found or you don't have permission to update it"}, 
+                              status=status.HTTP_404_NOT_FOUND)
+            
+            # Update appointment status
+            appointment.status = new_status
+            
+            # Optional: Add notes if provided
+            if 'notes' in request.data:
+                appointment.notes = request.data.get('notes')
+                
+            appointment.save()
+            
+            return Response({
+                "detail": "Appointment status updated successfully",
+                "appointment_id": appointment.id,
+                "new_status": appointment.status
+            }, status=status.HTTP_200_OK)
+            
+        except DoctorProfiles.DoesNotExist:
+            return Response({"detail": "Doctor profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,9 +1,9 @@
 from .auth_views import LoginView, SignUpView
 from .profile_views import ProfileViewSet, ProfileUpdateView
 from .doctor_views import DoctorProfileView, DoctorAvailabilityViewSet, FavoriteDoctorViewSet , DoctorAvailabilityView
-from .appointment_views import AppointmentViewSet
+from .appointment_views import AppointmentViewSet, AppointmentsView
 from .notification_views import NotificationViewSet
-from .prescription_views import PrescriptionViewSet
+from .prescription_views import PrescriptionViewSet, DoctorPrescriptionsView
 
 __all__ = [
     'LoginView',
@@ -16,5 +16,7 @@ __all__ = [
     'FavoriteDoctorViewSet',
     'NotificationViewSet',
     'PrescriptionViewSet',
-    'DoctorAvailabilityView'
+    'DoctorAvailabilityView',
+    'AppointmentsView',
+    'DoctorPrescriptionsView'
 ]

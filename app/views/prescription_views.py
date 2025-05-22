@@ -3,6 +3,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from datetime import datetime
 import uuid
+from rest_framework.views import APIView
+
 
 from ..models import (
     Prescriptions,
@@ -171,3 +173,54 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         prescriptions = self.get_queryset().filter(doctor_id=doctor_id)
         serializer = self.serializer_class(prescriptions, many=True)
         return Response(serializer.data)
+    
+class DoctorPrescriptionsView(APIView):
+    """View for managing a doctor's prescriptions"""
+    
+    def get(self, request):
+        """Get all prescriptions created by the logged-in doctor"""
+        # Get doctor's user ID from token
+        doctor_user_id = get_user_id_from_token(request)
+        if not doctor_user_id:
+            return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            # Get the doctor profile using the user ID from token
+            doctor_profile = DoctorProfiles.objects.get(user_id=doctor_user_id)
+            
+            # Verify the user is a doctor
+            if doctor_profile.user.user_type != Profiles.UserType.DOCTOR:
+                return Response({"detail": "Only doctors can access their prescriptions"}, 
+                             status=status.HTTP_403_FORBIDDEN)
+            
+            # Get all prescriptions for this doctor
+            prescriptions = Prescriptions.objects.filter(
+                doctor=doctor_profile
+            ).select_related('patient', 'appointment')
+            
+            # Format the response with required information
+            prescriptions_data = []
+            for prescription in prescriptions:
+                prescription_data = {
+                    'id': prescription.id,
+                    'patient': {
+                        'id': prescription.patient.id,
+                        'name': prescription.patient.full_name,
+                        'avatar_url': prescription.patient.avatar_url
+                    },
+                    'prescription_date': prescription.prescription_date,
+                    'details': prescription.details,  # This contains the medications JSON
+                    'additional_notes': prescription.additional_notes,
+                    'appointment_id': prescription.appointment.id if prescription.appointment else None,
+                    'appointment_date': prescription.appointment.appointment_date if prescription.appointment else None,
+                    'created_at': prescription.created_at,
+                    'pdf_url': prescription.pdf_url
+                }
+                prescriptions_data.append(prescription_data)
+            
+            return Response(prescriptions_data, status=status.HTTP_200_OK)
+            
+        except DoctorProfiles.DoesNotExist:
+            return Response({"detail": "Doctor profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
