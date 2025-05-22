@@ -157,11 +157,46 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         patient_id = request.query_params.get('patient_id')
         if not patient_id:
             return Response({"detail": "Patient ID is required"}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_400_BAD_REQUEST)
 
-        prescriptions = self.get_queryset().filter(patient_id=patient_id)
-        serializer = self.serializer_class(prescriptions, many=True)
-        return Response(serializer.data)
+        # Get prescriptions with related doctor and appointment data
+        prescriptions = self.get_queryset().filter(patient_id=patient_id).select_related(
+            'doctor', 'doctor__user', 'patient', 'appointment'
+        )
+        
+        # Format the response with doctor and patient information
+        prescriptions_data = []
+        for prescription in prescriptions:
+            prescription_data = {
+                'id': prescription.id,
+                'doctor': {
+                    'id': prescription.doctor.id,
+                    'name': prescription.doctor.user.full_name if hasattr(prescription.doctor.user, 'full_name') else '',
+                    'specialty': prescription.doctor.specialty if hasattr(prescription.doctor, 'specialty') else '',
+                    'hospital_name': prescription.doctor.hospital_name if hasattr(prescription.doctor, 'hospital_name') else '',
+                    'avatar_url': prescription.doctor.user.avatar_url if hasattr(prescription.doctor.user, 'avatar_url') else ''
+                },
+                'patient': {
+                    'id': prescription.patient.id,
+                    'name': prescription.patient.full_name if hasattr(prescription.patient, 'full_name') else '',
+                    'email': prescription.patient.email if hasattr(prescription.patient, 'email') else '',
+                    'phone': prescription.patient.phone if hasattr(prescription.patient, 'phone') else '',
+                    'avatar_url': prescription.patient.avatar_url if hasattr(prescription.patient, 'avatar_url') else ''
+                },
+                'prescription_date': prescription.prescription_date,
+                'details': prescription.details,
+                'additional_notes': prescription.additional_notes,
+                'appointment_id': prescription.appointment.id if prescription.appointment else None,
+                'appointment_date': prescription.appointment.appointment_date if prescription.appointment else None,
+                'pdf_url': prescription.pdf_url,
+                'created_at': prescription.created_at,
+                'is_synced': prescription.is_synced,
+                'local_id': prescription.local_id
+            }
+            prescriptions_data.append(prescription_data)
+        
+        return Response(prescriptions_data, status=status.HTTP_200_OK)
+
 
     @action(detail=False, methods=['get'])
     def doctor_prescriptions(self, request):
