@@ -243,14 +243,13 @@ class FavoriteDoctorViewSet(viewsets.ModelViewSet):
         return queryset
     
 
-
 class DoctorAvailabilityView(APIView):
     def get(self, request):
         """
         Get available time slots for a doctor, excluding booked appointments
         """
         doctor_id = request.query_params.get('doctor_id')
-        date = request.query_params.get('date')  # Optional: Filter by specific date
+        date = request.query_params.get('date') 
 
         if not doctor_id:
             return Response(
@@ -265,6 +264,21 @@ class DoctorAvailabilityView(APIView):
                 is_available=True
             )
 
+            # Filter availability by day of week if date is provided
+            if date:
+                try:
+                    # Convert date string to datetime object
+                    date_obj = datetime.strptime(date, '%Y-%m-%d')
+                    # Get day name in lowercase
+                    day_of_week = date_obj.strftime('%A').lower()
+                    # Filter availability for that day
+                    availability = availability.filter(day_of_week=day_of_week)
+                except ValueError:
+                    return Response(
+                        {"detail": "Invalid date format. Use YYYY-MM-DD"}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
             # Get booked appointments
             appointments = Appointments.objects.filter(
                 doctor_id=doctor_id,
@@ -273,11 +287,11 @@ class DoctorAvailabilityView(APIView):
 
             if date:
                 appointments = appointments.filter(appointment_date=date)
-
-            available_slots = []
             
+            available_slots = []
+
             for slot in availability:
-                # Convert availability to time slots
+                # Rest of the code remains the same
                 current_time = datetime.combine(
                     datetime.min, 
                     slot.start_time
@@ -321,6 +335,7 @@ class DoctorAvailabilityView(APIView):
             return Response({
                 'doctor_id': doctor_id,
                 'date': date,
+                'day_of_week': day_of_week if date else None,
                 'available_slots': available_slots
             })
 
